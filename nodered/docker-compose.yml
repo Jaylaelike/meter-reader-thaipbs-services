@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  node-red:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nodered_server
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Bangkok
+      - NODE_RED_ENABLE_PROJECTS=true
+    ports:
+      - "1880:1880"
+    volumes:
+      - nodered_data:/data
+      - ./flows:/data/flows:ro
+    networks:
+      - nodered_network
+
+volumes:
+  nodered_data:
+    driver: local
+
+networks:
+  nodered_network:
+    driver: bridge

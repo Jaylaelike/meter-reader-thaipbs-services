@@ -1,0 +1,26 @@
+{
+    "name": "power-monitor-nodered",
+    "version": "1.0.0",
+    "description": "Node-RED server for Power Monitor MQTT gateway",
+    "main": "index.js",
+    "scripts": {
+        "start": "node-red",
+        "dev": "node-red --verbose"
+    },
+    "dependencies": {
+        "node-red": "^3.1.0",
+        "node-red-contrib-modbus": "^5.26.1",
+        "node-red-dashboard": "^3.6.0",
+        "node-red-contrib-ui-led": "^0.4.11",
+        "node-red-contrib-buffer-parser": "^3.6.0",
+        "moment-timezone": "^0.5.43"
+    },
+    "keywords": [
+        "node-red",
+        "modbus",
+        "mqtt",
+        "power-monitor"
+    ],
+    "author": "Power Monitor Team",
+    "license": "MIT"
+}

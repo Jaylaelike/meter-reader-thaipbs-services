@@ -1,0 +1,253 @@
+[
+    {
+        "id": "9d98895e.a522f8",
+        "type": "modbus-read",
+        "z": "e0440ae3.5da358",
+        "name": "READ Voltage+Current (0x5B02 qty20)",
+        "topic": "",
+        "showStatusActivities": true,
+        "showErrors": true,
+        "unitid": "2",
+        "dataType": "HoldingRegister",
+        "adr": "23298",
+        "quantity": "20",
+        "rate": "2",
+        "rateUnit": "s",
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "server": "9a047800.858278",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "x": 230,
+        "y": 160,
+        "wires": [
+            [
+                "eef6e5b7.b8908"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "eef6e5b7.b8908",
+        "type": "function",
+        "z": "e0440ae3.5da358",
+        "name": "MAP V & I -> flow.load",
+        "func": "const r = msg.payload;\nif (!Array.isArray(r) || r.length < 20) return null;\n\n// รวม 2 reg -> unsigned 32-bit\nfunction u32(hi, lo) {\n  return ((hi & 0xFFFF) << 16) | (lo & 0xFFFF);\n}\nfunction u32Scaled(idx, scale, dp) {\n  const val = u32(r[idx], r[idx + 1]);\n  return Number((val * scale).toFixed(dp));\n}\n\n// Layout เมื่ออ่านต่อเนื่องจาก 0x5B02 qty 20\n// 0x5B02..0x5B0C = 12 regs  => r[0..11] (Voltage 6 ค่า * 2 regs)\n// 0x5B0E..0x5B0F = 2 regs   => r[12..13] (ข้าม)\n// 0x5B10..0x5B15 = 6 regs   => r[14..19] (Current 3 ค่า * 2 regs)\n\nconst load = flow.get('load') || {};\n\n// Voltage scale 0.1, len 2\nload.vL1  = u32Scaled(0,  0.1, 1); // 0x5B02\nload.vL2  = u32Scaled(2,  0.1, 1); // 0x5B04\nload.vL3  = u32Scaled(4,  0.1, 1); // 0x5B06\nload.vL12 = u32Scaled(6,  0.1, 1); // 0x5B08 L1-L2\nload.vL32 = u32Scaled(8,  0.1, 1); // 0x5B0A L3-L2\nload.vL13 = u32Scaled(10, 0.1, 1); // 0x5B0C L1-L3\n\n// Current scale 0.01, len 2\nload.iL1 = u32Scaled(14, 0.01, 2); // 0x5B10\nload.iL2 = u32Scaled(16, 0.01, 2); // 0x5B12\nload.iL3 = u32Scaled(18, 0.01, 2); // 0x5B14\n\nflow.set('load', load);\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 550,
+        "y": 160,
+        "wires": [
+            [
+                "19d6696c.91bcb7"
+            ]
+        ]
+    },
+    {
+        "id": "5bdf3ff3.48fb68",
+        "type": "modbus-read",
+        "z": "e0440ae3.5da358",
+        "name": "READ Frequency (0x5B32 qty1)",
+        "topic": "",
+        "showStatusActivities": true,
+        "showErrors": true,
+        "unitid": "2",
+        "dataType": "HoldingRegister",
+        "adr": "23346",
+        "quantity": "1",
+        "rate": "2",
+        "rateUnit": "s",
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "server": "9a047800.858278",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "x": 220,
+        "y": 240,
+        "wires": [
+            [
+                "894512e7.495978"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "894512e7.495978",
+        "type": "function",
+        "z": "e0440ae3.5da358",
+        "name": "MAP Frequency -> flow.load",
+        "func": "const r = msg.payload;\nif (!Array.isArray(r) || r.length < 1) return null;\n\nconst load = flow.get('load') || {};\nload.frequency = Number((Number(r[0]) * 0.01).toFixed(2)); // scale 0.01, len 1\nflow.set('load', load);\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 530,
+        "y": 240,
+        "wires": [
+            [
+                "19d6696c.91bcb7"
+            ]
+        ]
+    },
+    {
+        "id": "a8d91af4.dde4",
+        "type": "modbus-read",
+        "z": "e0440ae3.5da358",
+        "name": "READ PF (0x5B40 qty4)",
+        "topic": "",
+        "showStatusActivities": true,
+        "showErrors": true,
+        "unitid": "2",
+        "dataType": "HoldingRegister",
+        "adr": "23360",
+        "quantity": "4",
+        "rate": "2",
+        "rateUnit": "s",
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "server": "9a047800.858278",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "x": 200,
+        "y": 320,
+        "wires": [
+            [
+                "ddac57f8.82f1c"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "ddac57f8.82f1c",
+        "type": "function",
+        "z": "e0440ae3.5da358",
+        "name": "MAP PF -> flow.load",
+        "func": "const r = msg.payload;\nif (!Array.isArray(r) || r.length < 4) return null;\n\nfunction s16(x){\n  x = Number(x) & 0xFFFF;\n  return (x > 32767) ? (x - 65536) : x;\n}\nfunction pf(idx){\n  return Number((s16(r[idx]) * 0.001).toFixed(3));\n}\n\nconst load = flow.get('load') || {};\nload.pfT  = pf(0);   // 0x5B40\nload.pfL1 = pf(1);   // 0x5B41\nload.pfL2 = pf(2);   // 0x5B42\nload.pfL3 = pf(3);   // 0x5B43\n\nflow.set('load', load);\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 510,
+        "y": 320,
+        "wires": [
+            [
+                "19d6696c.91bcb7"
+            ]
+        ]
+    },
+    {
+        "id": "2c704cb2.de0614",
+        "type": "inject",
+        "z": "e0440ae3.5da358",
+        "name": "Publish every 5s",
+        "topic": "",
+        "payload": "",
+        "payloadType": "str",
+        "repeat": "5",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "1",
+        "x": 210,
+        "y": 420,
+        "wires": [
+            [
+                "1b23f5d6.e408fa"
+            ]
+        ]
+    },
+    {
+        "id": "1b23f5d6.e408fa",
+        "type": "function",
+        "z": "e0440ae3.5da358",
+        "name": "BUILD payload -> MQTT sensor/3phase10",
+        "func": "function ok(v){ return v !== undefined && v !== null; }\nfunction fix(v, dp){\n  if (!ok(v)) return null;\n  const n = Number(v);\n  if (!Number.isFinite(n)) return null;\n  return Number(n.toFixed(dp));\n}\n\nconst load = flow.get('load') || {};\n\n// กันส่งถ้ายังไม่ครบ\nconst must = [load.vL1, load.vL2, load.vL3, load.iL1, load.iL2, load.iL3, load.frequency, load.pfT];\nif (!must.every(ok)) return null;\n\nmsg.topic = \"sensor/3phase10\";\nmsg.payload = {\n  load: {\n    voltage: [ fix(load.vL1,1), fix(load.vL2,1), fix(load.vL3,1) ],\n    voltage_3phase: [ fix(load.vL12,1), fix(load.vL32,1), fix(load.vL13,1) ],\n    current: [ fix(load.iL1,2), fix(load.iL2,2), fix(load.iL3,2) ],\n    frequency: fix(load.frequency,2),\n    pfT: fix(load.pfT,3),\n    pf: [ fix(load.pfL1,3), fix(load.pfL2,3), fix(load.pfL3,3) ]\n  }\n};\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 570,
+        "y": 420,
+        "wires": [
+            [
+                "5af75de8.a7ca9c",
+                "b7200301.30239"
+            ]
+        ]
+    },
+    {
+        "id": "b7200301.30239",
+        "type": "mqtt out",
+        "z": "e0440ae3.5da358",
+        "name": "MQTT OUT (TPBS 10.0.1.224)",
+        "topic": "",
+        "qos": "0",
+        "retain": "false",
+        "broker": "a8bdb5ea.74e0b",
+        "x": 1040,
+        "y": 420,
+        "wires": []
+    },
+    {
+        "id": "19d6696c.91bcb7",
+        "type": "debug",
+        "z": "e0440ae3.5da358",
+        "name": "flow.load (watch mapping)",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "flow.load",
+        "x": 830,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "5af75de8.a7ca9c",
+        "type": "debug",
+        "z": "e0440ae3.5da358",
+        "name": "Published payload",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "x": 870,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "9a047800.858278",
+        "type": "modbus-client",
+        "name": "Modbus TCP Meter (EDIT IP)",
+        "clienttype": "tcp",
+        "bufferCommands": true,
+        "stateLogEnabled": false,
+        "tcpHost": "10.6.1.226",
+        "tcpPort": "502",
+        "tcpType": "DEFAULT",
+        "serialPort": "",
+        "serialConnectionDelay": "",
+        "unit_id": "2",
+        "commandDelay": "1",
+        "clientTimeout": "1000",
+        "reconnectTimeout": "2000"
+    },
+    {
+        "id": "a8bdb5ea.74e0b",
+        "type": "mqtt-broker",
+        "z": "",
+        "name": "TPBS MQTT (10.0.1.224)",
+        "broker": "10.0.1.224",
+        "port": "1883",
+        "clientid": "nodered-tpbs-pub",
+        "usetls": false,
+        "compatmode": true,
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "closeTopic": "",
+        "closePayload": "",
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": ""
+    }
+]

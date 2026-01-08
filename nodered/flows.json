@@ -1,0 +1,246 @@
+[
+    {
+        "id": "main_flow",
+        "type": "tab",
+        "label": "Power Monitor Flow",
+        "disabled": false,
+        "info": "Main flow for reading Modbus data and publishing to MQTT"
+    },
+    {
+        "id": "modbus_read_voltage",
+        "type": "modbus-read",
+        "z": "main_flow",
+        "name": "READ Voltage+Current",
+        "topic": "",
+        "showStatusActivities": true,
+        "showErrors": true,
+        "unitid": "2",
+        "dataType": "HoldingRegister",
+        "adr": "23298",
+        "quantity": "20",
+        "rate": "5",
+        "rateUnit": "s",
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "server": "modbus_server",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "x": 200,
+        "y": 160,
+        "wires": [
+            ["map_voltage_current"],
+            []
+        ]
+    },
+    {
+        "id": "map_voltage_current",
+        "type": "function",
+        "z": "main_flow",
+        "name": "MAP V & I -> flow.load",
+        "func": "const r = msg.payload;\nif (!Array.isArray(r) || r.length < 20) return null;\n\n// Combine 2 registers -> unsigned 32-bit\nfunction u32(hi, lo) {\n  return ((hi & 0xFFFF) << 16) | (lo & 0xFFFF);\n}\nfunction u32Scaled(idx, scale, dp) {\n  const val = u32(r[idx], r[idx + 1]);\n  return Number((val * scale).toFixed(dp));\n}\n\nconst load = flow.get('load') || {};\n\n// Voltage scale 0.1, len 2\nload.vL1  = u32Scaled(0,  0.1, 1);\nload.vL2  = u32Scaled(2,  0.1, 1);\nload.vL3  = u32Scaled(4,  0.1, 1);\nload.vL12 = u32Scaled(6,  0.1, 1);\nload.vL32 = u32Scaled(8,  0.1, 1);\nload.vL13 = u32Scaled(10, 0.1, 1);\n\n// Current scale 0.01, len 2\nload.iL1 = u32Scaled(14, 0.01, 2);\nload.iL2 = u32Scaled(16, 0.01, 2);\nload.iL3 = u32Scaled(18, 0.01, 2);\n\nflow.set('load', load);\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 450,
+        "y": 160,
+        "wires": [
+            ["debug_load"]
+        ]
+    },
+    {
+        "id": "modbus_read_freq",
+        "type": "modbus-read",
+        "z": "main_flow",
+        "name": "READ Frequency",
+        "topic": "",
+        "showStatusActivities": true,
+        "showErrors": true,
+        "unitid": "2",
+        "dataType": "HoldingRegister",
+        "adr": "23346",
+        "quantity": "1",
+        "rate": "5",
+        "rateUnit": "s",
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "server": "modbus_server",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "x": 200,
+        "y": 240,
+        "wires": [
+            ["map_frequency"],
+            []
+        ]
+    },
+    {
+        "id": "map_frequency",
+        "type": "function",
+        "z": "main_flow",
+        "name": "MAP Frequency -> flow.load",
+        "func": "const r = msg.payload;\nif (!Array.isArray(r) || r.length < 1) return null;\n\nconst load = flow.get('load') || {};\nload.frequency = Number((Number(r[0]) * 0.01).toFixed(2));\nflow.set('load', load);\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 450,
+        "y": 240,
+        "wires": [
+            ["debug_load"]
+        ]
+    },
+    {
+        "id": "modbus_read_pf",
+        "type": "modbus-read",
+        "z": "main_flow",
+        "name": "READ Power Factor",
+        "topic": "",
+        "showStatusActivities": true,
+        "showErrors": true,
+        "unitid": "2",
+        "dataType": "HoldingRegister",
+        "adr": "23360",
+        "quantity": "4",
+        "rate": "5",
+        "rateUnit": "s",
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "server": "modbus_server",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "x": 200,
+        "y": 320,
+        "wires": [
+            ["map_pf"],
+            []
+        ]
+    },
+    {
+        "id": "map_pf",
+        "type": "function",
+        "z": "main_flow",
+        "name": "MAP PF -> flow.load",
+        "func": "const r = msg.payload;\nif (!Array.isArray(r) || r.length < 4) return null;\n\nfunction s16(x){\n  x = Number(x) & 0xFFFF;\n  return (x > 32767) ? (x - 65536) : x;\n}\nfunction pf(idx){\n  return Number((s16(r[idx]) * 0.001).toFixed(3));\n}\n\nconst load = flow.get('load') || {};\nload.pfT  = pf(0);\nload.pfL1 = pf(1);\nload.pfL2 = pf(2);\nload.pfL3 = pf(3);\n\nflow.set('load', load);\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 450,
+        "y": 320,
+        "wires": [
+            ["debug_load"]
+        ]
+    },
+    {
+        "id": "publish_timer",
+        "type": "inject",
+        "z": "main_flow",
+        "name": "Publish every 5s",
+        "topic": "",
+        "payload": "",
+        "payloadType": "str",
+        "repeat": "5",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "2",
+        "x": 200,
+        "y": 420,
+        "wires": [
+            ["build_mqtt_payload"]
+        ]
+    },
+    {
+        "id": "build_mqtt_payload",
+        "type": "function",
+        "z": "main_flow",
+        "name": "BUILD MQTT Payload",
+        "func": "function ok(v){ return v !== undefined && v !== null; }\nfunction fix(v, dp){\n  if (!ok(v)) return null;\n  const n = Number(v);\n  if (!Number.isFinite(n)) return null;\n  return Number(n.toFixed(dp));\n}\n\nconst load = flow.get('load') || {};\n\n// Check if we have minimum required data\nconst must = [load.vL1, load.vL2, load.vL3, load.iL1, load.iL2, load.iL3, load.frequency, load.pfT];\nif (!must.every(ok)) {\n    node.warn('Missing required data, skipping publish');\n    return null;\n}\n\nmsg.topic = \"sensor/3phase10\";\nmsg.payload = {\n  load: {\n    voltage: [ fix(load.vL1,1), fix(load.vL2,1), fix(load.vL3,1) ],\n    voltage_3phase: [ fix(load.vL12,1), fix(load.vL32,1), fix(load.vL13,1) ],\n    current: [ fix(load.iL1,2), fix(load.iL2,2), fix(load.iL3,2) ],\n    frequency: fix(load.frequency,2),\n    pfT: fix(load.pfT,3),\n    pf: [ fix(load.pfL1,3), fix(load.pfL2,3), fix(load.pfL3,3) ]\n  },\n  timestamp: new Date().toISOString()\n};\n\nnode.status({fill:\"green\",shape:\"dot\",text:\"Published at \" + new Date().toLocaleTimeString()});\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 450,
+        "y": 420,
+        "wires": [
+            ["mqtt_publish", "debug_mqtt"]
+        ]
+    },
+    {
+        "id": "mqtt_publish",
+        "type": "mqtt out",
+        "z": "main_flow",
+        "name": "MQTT Publisher",
+        "topic": "",
+        "qos": "0",
+        "retain": "false",
+        "broker": "mqtt_broker",
+        "x": 700,
+        "y": 420,
+        "wires": []
+    },
+    {
+        "id": "debug_load",
+        "type": "debug",
+        "z": "main_flow",
+        "name": "Load Data",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "flow.load",
+        "x": 680,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "debug_mqtt",
+        "type": "debug",
+        "z": "main_flow",
+        "name": "MQTT Payload",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "x": 700,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "modbus_server",
+        "type": "modbus-client",
+        "name": "Power Meter Modbus",
+        "clienttype": "tcp",
+        "bufferCommands": true,
+        "stateLogEnabled": false,
+        "tcpHost": "10.6.1.226",
+        "tcpPort": "502",
+        "tcpType": "DEFAULT",
+        "serialPort": "",
+        "serialConnectionDelay": "",
+        "unit_id": "2",
+        "commandDelay": "100",
+        "clientTimeout": "5000",
+        "reconnectTimeout": "2000"
+    },
+    {
+        "id": "mqtt_broker",
+        "type": "mqtt-broker",
+        "name": "TPBS MQTT Broker",
+        "broker": "172.16.202.63",
+        "port": "1883",
+        "clientid": "nodered-power-monitor",
+        "usetls": false,
+        "compatmode": false,
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "closeTopic": "",
+        "closePayload": "",
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "credentials": {
+            "user": "admin",
+            "password": "public"
+        }
+    }
+]
