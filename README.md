@@ -6,6 +6,8 @@
 
 Meter Reader Thai PBS Services is an IoT-based meter reading system designed to automate the process of collecting and storing utility meter values. This service uses MQTT protocol for real-time data transmission from IoT devices to a centralized database, making utility monitoring more efficient and reliable.
 
+![Systems Diagram](https://56fwnhyzti.ufs.sh/f/aK4w8mNL3AiPbirbh62pYTMgVenQFZajfRIEm9A73kXGlq6y)
+
 ## Features
 
 - **IoT Integration**: Real-time meter data collection via MQTT protocol
