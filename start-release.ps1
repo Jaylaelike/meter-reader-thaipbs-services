@@ -252,6 +252,19 @@ function Start-Deployment {
     if (-not (Start-Services)) { exit 1 }
     if (-not (Wait-ForServices)) { exit 1 }
 
+    # Initialize database if needed
+    Write-Info "Checking database initialization..."
+    $databases = docker exec power_monitor_mysql mysql -uroot -pthaipbs -e "SHOW DATABASES;" 2>$null
+    if ($databases -notmatch "power_real_a_1") {
+        Write-Warning "Database 'power_real_a_1' not found. Initializing..."
+        if (-not (Initialize-Database)) {
+            Write-Warning "Database initialization had issues. You can retry with: .\start-release.ps1 initdb"
+        }
+    }
+    else {
+        Write-Success "Database 'power_real_a_1' exists"
+    }
+
     Write-Host ""
     Write-Header "Deployment Complete!"
 
@@ -262,10 +275,191 @@ function Start-Deployment {
     Write-Success "🎉 Power Monitor is now running!"
 }
 
+# Initialize database manually
+function Initialize-Database {
+    Write-Header "Initializing Database"
+    
+    # Check if MySQL container is running
+    try {
+        $status = docker-compose -f docker-compose-release.yml ps mysql | Out-String
+        if ($status -notmatch "Up|running") {
+            Write-Error "MySQL container is not running. Please start services first."
+            Write-Info "Run: .\start-release.ps1 deploy"
+            return $false
+        }
+    }
+    catch {
+        Write-Error "Failed to check MySQL status: $_"
+        return $false
+    }
+
+    # Wait for MySQL to be healthy
+    Write-Info "Waiting for MySQL to be ready..."
+    $timeout = 30
+    $counter = 0
+    $ready = $false
+
+    while ($counter -lt $timeout) {
+        try {
+            $result = docker exec power_monitor_mysql mysqladmin ping -uroot -pthaipbs 2>$null
+            if ($result -match "alive") {
+                $ready = $true
+                break
+            }
+        }
+        catch {
+            # Continue waiting
+        }
+        Write-Host "." -NoNewline
+        Start-Sleep -Seconds 2
+        $counter += 2
+    }
+    Write-Host ""
+
+    if (-not $ready) {
+        Write-Error "MySQL is not responding"
+        return $false
+    }
+
+    Write-Success "MySQL is ready"
+
+    # Check if database already exists
+    Write-Info "Checking existing databases..."
+    $databases = docker exec power_monitor_mysql mysql -uroot -pthaipbs -e "SHOW DATABASES;" 2>$null
+    
+    if ($databases -match "power_real_a_1") {
+        Write-Warning "Database 'power_real_a_1' already exists"
+        $response = Read-Host "Do you want to drop and recreate it? (y/n)"
+        if ($response -match "^[Yy]$") {
+            Write-Info "Dropping existing database..."
+            docker exec power_monitor_mysql mysql -uroot -pthaipbs -e "DROP DATABASE power_real_a_1;" 2>$null
+            Write-Success "Database dropped"
+        }
+        else {
+            Write-Info "Keeping existing database"
+            return $true
+        }
+    }
+
+    # Run initialization SQL
+    Write-Info "Creating database and tables..."
+    
+    try {
+        # Copy init.sql to container and execute
+        docker cp init.sql power_monitor_mysql:/tmp/init.sql
+        docker exec power_monitor_mysql mysql -uroot -pthaipbs -e "source /tmp/init.sql;" 2>$null
+        Write-Success "Database initialized from init.sql"
+    }
+    catch {
+        Write-Warning "init.sql failed, trying inline initialization..."
+        
+        # Fallback: create database and basic structure inline
+        $initSQL = @"
+CREATE DATABASE IF NOT EXISTS power_real_a_1 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE power_real_a_1;
+CREATE TABLE IF NOT EXISTS full_history (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  device_id VARCHAR(64) NOT NULL,
+  time_key TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  load_v_r DECIMAL(8,2) NULL,
+  load_v_y DECIMAL(8,2) NULL,
+  load_v_b DECIMAL(8,2) NULL,
+  load_v3_r DECIMAL(8,2) NULL,
+  load_v3_y DECIMAL(8,2) NULL,
+  load_v3_b DECIMAL(8,2) NULL,
+  load_i_r DECIMAL(10,2) NULL,
+  load_i_y DECIMAL(10,2) NULL,
+  load_i_b DECIMAL(10,2) NULL,
+  load_freq DECIMAL(6,2) NULL,
+  load_pf_t DECIMAL(6,3) NULL,
+  load_pf_r DECIMAL(6,3) NULL,
+  load_pf_y DECIMAL(6,3) NULL,
+  load_pf_b DECIMAL(6,3) NULL,
+  PRIMARY KEY (id),
+  KEY idx_device_time (device_id, time_key),
+  KEY idx_time_key (time_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS summary_minute (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  device_id VARCHAR(64) NOT NULL,
+  time_key DATETIME NOT NULL,
+  avg_kw DECIMAL(12,4) DEFAULT 0,
+  total_kwh DECIMAL(12,6) DEFAULT 0,
+  counter INT UNSIGNED DEFAULT 0,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_device_time (device_id, time_key),
+  KEY idx_time_key (time_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS summary_hourly (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  device_id VARCHAR(64) NOT NULL,
+  time_key DATETIME NOT NULL,
+  avg_kw DECIMAL(12,4) DEFAULT 0,
+  total_kwh DECIMAL(12,6) DEFAULT 0,
+  counter INT UNSIGNED DEFAULT 0,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_device_time (device_id, time_key),
+  KEY idx_time_key (time_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS summary_daily (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  device_id VARCHAR(64) NOT NULL,
+  time_key DATE NOT NULL,
+  avg_kw DECIMAL(12,4) DEFAULT 0,
+  total_kwh DECIMAL(12,6) DEFAULT 0,
+  counter INT UNSIGNED DEFAULT 0,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_device_time (device_id, time_key),
+  KEY idx_time_key (time_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS summary_monthly (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  device_id VARCHAR(64) NOT NULL,
+  time_key DATE NOT NULL,
+  avg_kw DECIMAL(12,4) DEFAULT 0,
+  total_kwh DECIMAL(12,6) DEFAULT 0,
+  counter INT UNSIGNED DEFAULT 0,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_device_time (device_id, time_key),
+  KEY idx_time_key (time_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS summary_yearly (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  device_id VARCHAR(64) NOT NULL,
+  time_key DATE NOT NULL,
+  avg_kw DECIMAL(12,4) DEFAULT 0,
+  total_kwh DECIMAL(12,6) DEFAULT 0,
+  counter INT UNSIGNED DEFAULT 0,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_device_time (device_id, time_key),
+  KEY idx_time_key (time_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+"@
+        docker exec power_monitor_mysql mysql -uroot -pthaipbs -e $initSQL 2>$null
+    }
+
+    # Verify database was created
+    Write-Info "Verifying database..."
+    $databases = docker exec power_monitor_mysql mysql -uroot -pthaipbs -e "SHOW DATABASES;" 2>$null
+    
+    if ($databases -match "power_real_a_1") {
+        Write-Success "Database 'power_real_a_1' created successfully"
+        
+        # Show tables
+        Write-Info "Tables created:"
+        docker exec power_monitor_mysql mysql -uroot -pthaipbs power_real_a_1 -e "SHOW TABLES;" 2>$null
+        return $true
+    }
+    else {
+        Write-Error "Failed to create database"
+        return $false
+    }
+}
+
 # Main script logic
 param(
     [Parameter(Position=0)]
-    [ValidateSet("deploy", "start", "stop", "restart", "status", "logs", "clean")]
+    [ValidateSet("deploy", "start", "stop", "restart", "status", "logs", "clean", "initdb")]
     [string]$Command = "deploy"
 )
 
@@ -302,8 +496,17 @@ switch ($Command) {
             Write-Success "Cleaned up containers and volumes"
         }
     }
+    "initdb" {
+        if (Initialize-Database) {
+            Write-Success "Database initialization complete!"
+        }
+        else {
+            Write-Error "Database initialization failed"
+            exit 1
+        }
+    }
     default {
-        Write-Host "Usage: .\start-release.ps1 [deploy|start|stop|restart|status|logs|clean]"
+        Write-Host "Usage: .\start-release.ps1 [deploy|start|stop|restart|status|logs|clean|initdb]"
         Write-Host ""
         Write-Host "Commands:"
         Write-Host "  deploy  - Full deployment (default)"
@@ -313,5 +516,6 @@ switch ($Command) {
         Write-Host "  status  - Show service status"
         Write-Host "  logs    - Show and follow logs"
         Write-Host "  clean   - Remove containers and volumes"
+        Write-Host "  initdb  - Initialize database manually"
     }
 }
