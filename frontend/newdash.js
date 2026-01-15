@@ -1,6 +1,53 @@
 // newdash.js
 
 document.addEventListener("DOMContentLoaded", () => {
+  // ------------------------------------------------------------
+  // Auto UI scale when user toggles Browser Fullscreen (F11)
+  // เป้าหมาย: เข้าโหมด Fullscreen แล้ว UI ดู “พอดี” โดยไม่ต้องกด Zoom 110%
+  // ปรับเฉพาะตัวแปร CSS --ui-scale (กำหนดไว้ใน newdash.css)
+  // ------------------------------------------------------------
+  (function initAutoScaleForFullscreen() {
+    const SCALE_NORMAL = 1.0;
+    const SCALE_FULLSCREEN = 1.10; // ถ้ายังเล็ก/ใหญ่ไป ปรับเลขนี้ได้ เช่น 1.08 หรือ 1.12
+
+    // ตรวจว่าเป็น Browser Fullscreen (F11) หรือ DOM Fullscreen
+    function isBrowserFullscreen() {
+      const tol = 2; // pixel tolerance
+      const byOuter =
+        Math.abs(window.outerWidth - screen.width) <= tol &&
+        Math.abs(window.outerHeight - screen.height) <= tol;
+      const byInner =
+        Math.abs(window.innerWidth - screen.width) <= 8 &&
+        Math.abs(window.innerHeight - screen.height) <= 80; // toolbar/OS can vary
+      return byOuter || byInner;
+    }
+
+    let lastScale = null;
+    function applyScale() {
+      const fullscreen = !!document.fullscreenElement || isBrowserFullscreen();
+      const scale = fullscreen ? SCALE_FULLSCREEN : SCALE_NORMAL;
+      if (scale === lastScale) return;
+      lastScale = scale;
+      document.documentElement.style.setProperty("--ui-scale", String(scale));
+    }
+
+    // run once
+    applyScale();
+
+    // update on resize (F11 triggers resize)
+    let raf = 0;
+    window.addEventListener(
+      "resize",
+      () => {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(applyScale);
+      },
+      { passive: true }
+    );
+
+    // update on DOM fullscreen change (if used)
+    document.addEventListener("fullscreenchange", applyScale);
+  })();
   // เก็บเวลา Sunrise / Sunset แบบ Date จาก API ไว้ใช้คำนวณตำแหน่งดวงอาทิตย์
   let sunriseDateObj = null;
   let sunsetDateObj = null;
@@ -26,36 +73,6 @@ document.addEventListener("DOMContentLoaded", () => {
     weekdayEl.textContent = new Intl.DateTimeFormat("th-TH", { weekday: "long" }).format(now);
 
     // วันที่ + ปี พ.ศ.
-    dateEl.textContent = new Intl.DateTimeFormat("th-TH-u-ca-buddhist", {
-      day: "numeric", month: "long", year: "numeric"
-    }).format(now);
-  }
-
-  updateDateTimeCard();
-  setInterval(updateDateTimeCard, 1000);
-
-
-    // -----------------------------
-  // Date / Time (อัปเดตทุก 1 วินาที)
-  // -----------------------------
-  function pad2(n){ return String(n).padStart(2, "0"); }
-
-  function updateDateTimeCard(){
-    const hmEl = document.getElementById("dt-hm");
-    const secEl = document.getElementById("dt-sec");
-    const weekdayEl = document.getElementById("dt-weekday");
-    const dateEl = document.getElementById("dt-date");
-    if (!hmEl || !secEl || !weekdayEl || !dateEl) return;
-
-    const now = new Date();
-
-    hmEl.textContent = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
-    secEl.textContent = `:${pad2(now.getSeconds())}`;
-
-    // วันไทย
-    weekdayEl.textContent = new Intl.DateTimeFormat("th-TH", { weekday: "long" }).format(now);
-
-    // วันที่ + ปี พ.ศ. (บังคับ Buddhist calendar)
     dateEl.textContent = new Intl.DateTimeFormat("th-TH-u-ca-buddhist", {
       day: "numeric", month: "long", year: "numeric"
     }).format(now);
@@ -143,7 +160,7 @@ function getPMAngle(value) {
 
   // ค่าเริ่มต้นของเกจ (ภายใน / ภายนอก)
   // ภายในอาคารยังใช้ค่าคงที่ไปก่อน
-  setPMGauge(18.2, "pm-pointer-indoor", "#pm-value-indoor");
+  setPMGauge(0, "pm-pointer-indoor", "#pm-value-indoor");
   // ภายนอกอาคารเริ่มที่ 0 แล้วให้อัปเดตจาก MQTT
   setPMGauge(0, "pm-pointer-outdoor", "#pm-value-outdoor");
 
@@ -157,18 +174,12 @@ function getPMAngle(value) {
       return;
     }
 
-    // MQTT Broker configuration - can be overridden via window.MQTT_CONFIG
-    const mqttConfig = window.MQTT_CONFIG || {
-      url: "ws://172.16.202.63:8083/mqtt",
-      username: "admin",
-      password: "public"
-    };
-
     // เชื่อมต่อ MQTT Broker ผ่าน WebSocket
-    const client = mqtt.connect(mqttConfig.url, {
+    const client = mqtt.connect("ws://172.16.202.63:8083/mqtt", {
       clientId: "web-dashboard-" + Math.random().toString(16).substr(2, 8),
-      username: mqttConfig.username,
-      password: mqttConfig.password,
+      // ถ้ามี username/password ให้เพิ่มตรงนี้
+      username: "admin",
+      password: "public",
     });
 
     client.on("connect", () => {
@@ -242,11 +253,113 @@ function getPMAngle(value) {
     });
   }
 
+  
+
+// -----------------------------
+// 2.1.1 MQTT: รับค่า PM2.5 ภายในอาคารจาก MQTT Server (คนละ Broker กับ Outdoor)
+// -----------------------------
+function initMqttForPM25Indoor() {
+  // ตรวจว่า mqtt.min.js ถูกโหลดแล้วหรือยัง
+  if (typeof mqtt === "undefined") {
+    console.warn("mqtt.min.js ยังไม่ถูกโหลด – ข้ามการเชื่อมต่อ MQTT (Indoor)");
+    return;
+  }
+
+  const TOPIC_INDOOR = "sensors/pm25_indoor";
+
+  // เชื่อมต่อ MQTT Broker (Indoor) ผ่าน WebSocket
+  const client = mqtt.connect("ws://172.16.116.82:8083/mqtt", {
+    clientId: "web-dashboard-indoor-" + Math.random().toString(16).substr(2, 8),
+    username: "admin",
+    password: "public",
+  });
+
+  client.on("connect", () => {
+    console.log("MQTT (Indoor) connected");
+
+    client.subscribe(TOPIC_INDOOR, (err) => {
+      if (err) {
+        console.error("MQTT (Indoor) subscribe error:", err);
+      } else {
+        console.log("Subscribed to " + TOPIC_INDOOR);
+      }
+    });
+  });
+
+  client.on("message", (topic, message) => {
+    try {
+      if (topic !== TOPIC_INDOOR) return;
+
+      const raw = message.toString();
+
+      // รองรับทั้งแบบส่งมาเป็นตัวเลขล้วน "35.2"
+      // และแบบ JSON เช่น {"pm2_5":35.2} หรือ {"pm25":35.2} หรือ {"value":35.2}
+      let payload = null;
+      let pmValue = null;
+
+      try {
+        payload = JSON.parse(raw);
+      } catch (_) {
+        payload = null;
+      }
+
+      if (payload && typeof payload === "object") {
+        const candidate =
+          payload.pm2_5 ??
+          payload.pm25 ??
+          payload.pm2p5 ??
+          payload.value ??
+          payload.pm ??
+          payload.PM2_5 ??
+          payload["pm2.5"];
+
+        if (typeof candidate !== "undefined") {
+          pmValue = parseFloat(candidate);
+        }
+
+        // ถ้ามี temperature/humidity มาด้วย ให้แสดงในบล็อก "ภายในอาคาร" ด้วย (ถ้ามี element)
+        if (
+          typeof payload.temperature !== "undefined" &&
+          typeof payload.humidity !== "undefined"
+        ) {
+          const temp = parseFloat(payload.temperature);
+          const hum = parseFloat(payload.humidity);
+
+          if (!Number.isNaN(temp) && !Number.isNaN(hum)) {
+            const indoorMain = document.querySelector(".env-block-indoor .env-main");
+            if (indoorMain) {
+              indoorMain.textContent = `${temp.toFixed(1)}°C / ${hum.toFixed(0)}%`;
+            }
+          }
+        }
+      } else {
+        pmValue = parseFloat(raw);
+      }
+
+      if (pmValue !== null && !Number.isNaN(pmValue)) {
+        setPMGauge(pmValue, "pm-pointer-indoor", "#pm-value-indoor");
+      }
+    } catch (e) {
+      console.error("Error parsing MQTT (Indoor) message:", e);
+    }
+  });
+
+  client.on("error", (err) => {
+    console.error("MQTT (Indoor) error:", err);
+  });
+
+  client.on("close", () => {
+    console.warn("MQTT (Indoor) connection closed");
+  });
+}
+
   // เรียกใช้งาน MQTT เมื่อหน้าโหลดเสร็จ
   initMqttForPM25Outdoor();
+  initMqttForPM25Indoor();
 
     // -----------------------------
   // 2.2 Daily kWh + Carbon footprint (Today / Yesterday)
+  // วาง “ใต้” initMqttForPM25Outdoor();
   // วาง “ใต้” initMqttForPM25Outdoor(); และ “เหนือ” Section 3 (ดวงอาทิตย์)
   // -----------------------------
     let energyFetchBusy = false;
