@@ -91,6 +91,27 @@ services:
     networks:
       - power_network
 
+  # MySQL Backup Service - Monthly snapshots
+  mysql-backup:
+    build:
+      context: ./backup
+      dockerfile: Dockerfile
+    container_name: power_mysql_backup
+    restart: always
+    environment:
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-thaipbs}
+      DB_NAME: ${DB_NAME:-power_real_a_1}
+      TZ: Asia/Bangkok
+    volumes:
+      - ./db_snapshots:/backups
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - power_network
+
 volumes:
   mysql_data:
     driver: local
