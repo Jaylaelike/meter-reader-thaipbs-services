@@ -10,10 +10,9 @@ RUN apt-get update && apt-get install -y \
 COPY mysql-backup.sh /usr/local/bin/mysql-backup.sh
 RUN chmod +x /usr/local/bin/mysql-backup.sh
 
-# Copy cron configuration
+# Copy cron configuration (cron.d files are read automatically, no crontab command needed)
 COPY crontab /etc/cron.d/mysql-backup
 RUN chmod 0644 /etc/cron.d/mysql-backup
-RUN crontab /etc/cron.d/mysql-backup
 
 # Create backup directory
 RUN mkdir -p /backups
