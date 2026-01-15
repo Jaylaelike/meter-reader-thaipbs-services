@@ -253,6 +253,18 @@ docker exec power_mysql mysql -u root -pthaipbs -e "USE power_real_a_1; SHOW TAB
 docker exec power_mysql mysql -u root -pthaipbs -e "SELECT COUNT(*) FROM power_real_a_1.full_history;"
 ```
 
+#### Windows PowerShell if database not initialize:
+```powershell
+docker-compose up -d 
+```
+
+# If you just want to initialize the database now without the script:
+docker cp init.sql power_monitor_mysql:/tmp/init.sql
+docker exec power_monitor_mysql mysql -uroot -pthaipbs -e "source /tmp/init.sql;"
+
+# Then verify:
+docker exec power_monitor_mysql mysql -uroot -pthaipbs -e "SHOW DATABASES;"
+
 ### Backup Database
 
 ```bash

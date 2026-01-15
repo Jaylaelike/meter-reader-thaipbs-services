@@ -25,6 +25,20 @@ cd project-meter-thaipbs
 .\start-release.ps1 deploy
 ```
 
+
+#### Windows PowerShell if database not initialize:
+```powershell
+docker-compose up -d 
+```
+
+# If you just want to initialize the database now without the script:
+docker cp init.sql power_monitor_mysql:/tmp/init.sql
+docker exec power_monitor_mysql mysql -uroot -pthaipbs -e "source /tmp/init.sql;"
+
+# Then verify:
+docker exec power_monitor_mysql mysql -uroot -pthaipbs -e "SHOW DATABASES;"
+
+
 ### Option 2: Manual Deployment
 
 ```bash
