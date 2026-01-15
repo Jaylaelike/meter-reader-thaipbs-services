@@ -10,5 +10,5 @@ touch /var/log/mysql-backup.log
 echo "[$(date)] Backup service started"
 echo "[$(date)] Schedule: Monthly on 1st at 02:00 AM"
 
-# Start cron in foreground
-cron -f
+# Start crond in foreground (Oracle Linux uses crond, not cron)
+crond -n
