@@ -11,6 +11,7 @@
   --white-soft: rgba(255, 255, 255, 0.9);
   --text-main: #ffffff;
   --shadow-card: 0 16px 30px rgba(0, 0, 0, 0.25);
+  --ui-scale: 1;
 }
 
 /* ---------- Layout ---------- */
@@ -48,8 +49,17 @@ body {
 .dashboard-content {
   position: relative;
   z-index: 1;
-  height: 100%;
-  padding: 32px 60px 32px;                                                                      /*ปรับระยะด้านนอกของทุก card ในหน้า บน ซ้าย-ขวา ล่าง*/
+
+  /* Scale lock: คงสัดส่วน UI แม้ผู้ใช้ซูมเบราว์เซอร์ */
+  transform: scale(var(--ui-scale));
+  transform-origin: top left;
+
+  /* ชดเชยขนาดหลังใช้ transform เพื่อไม่ให้โดนครอป */
+  width: calc(100% / var(--ui-scale));
+  height: calc(100% / var(--ui-scale));
+  min-height: 0;
+
+  padding: 32px 60px 32px; /* ปรับระยะด้านนอกของทุก card ในหน้า บน ซ้าย-ขวา ล่าง */
   display: flex;
   flex-direction: column;
 }
@@ -113,12 +123,15 @@ body {
 /* ---------- Cards Grid ---------- */
 
 .cards-grid {
-  /* ให้สูงเกือบเต็มจอ หลังหัก header */
-  height: calc(100vh - 220px);
+  /* ใช้ flex แทนการ fix ด้วย 100vh เพื่อกัน layout เพี้ยนเวลา zoom */
+  flex: 1 1 auto;
+  min-height: 0;
+
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 40px;                                                                                      /*ประระยะ gap ซ้ายขวาของแต่ละ card*/
+  gap: 40px; /* ระยะห่างระหว่างการ์ด */
 }
+
 
 /* ---------- Card base ---------- */
 
@@ -991,7 +1004,7 @@ body {
 /* ปรับตำแหน่ง + ขนาดหัวข้อ "เทียบเท่าการใช้น้ำ" */
 .card-power .card-title-sm {
   font-size: 30px;   /* ขยายตัวหนังสือให้ใหญ่ขึ้น */
-  margin-top: 20px;  /* ขยับขึ้นให้ระดับเดียวกับ "พลังงานที่ใช้" */
+  margin-top: 10px;  /* ขยับขึ้นให้ระดับเดียวกับ "พลังงานที่ใช้" */
 }
 
 /* ลบเงาราง + กล่องแก้วด้านหลังการ์ดอุณหภูมิ/พระอาทิตย์ขึ้น-ตก */
@@ -1486,4 +1499,49 @@ body {
 
   box-shadow: 0 10px 26px rgba(0,0,0,0.25);
   z-index: -1;
+}
+
+/* ===== Fullscreen spacing tune (F11) =====
+   เป้าหมาย: เวลาเข้า Fullscreen ให้หัวข้อการ์ด/เนื้อหาขยับขึ้นใกล้ขอบบนมากขึ้น
+   โดยไม่กระทบตอนหน้าต่างปกติ (ไม่ Fullscreen)
+*/
+@media (min-height: 1000px) {
+  .card-section-top,
+  .card-section-bottom {
+    justify-content: flex-start;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  /* PM2.5 ครึ่งบนเดิมมี padding-top เยอะ → ลดลงแต่ยังให้ช่วยหายใจพอสำหรับ gauge */
+  .card-pm25 .card-section-top {
+    padding-top: 18px;
+  }
+}
+
+/* ================================
+   Fullscreen (F11) spacing tune
+   เพิ่มระยะหัวข้อกับเกจ/โดนัท เฉพาะจอใหญ่/สูง
+   ================================ */
+@media (min-width: 1600px) and (min-height: 980px) {
+
+  /* PM2.5 (ภายใน) : ดันเกจลง ไม่ให้ชิดหัวข้อ */
+  .card-pm25 .pm-gauge-wrapper {
+    margin-top: 30px;
+  }
+
+  /* PM2.5 (ภายนอก) : ดันทั้งชุดเกจลง */
+  .card-pm25 .gauge-wrapper-outdoor {
+    margin-top: 14px;
+  }
+
+  /* Real-Time Power : ดันโดนัทลง */
+  .card-power .donut-wrapper {
+    margin-top: 38px; /* เดิม 20px */
+  }
+
+  /* พลังงานที่ใช้ (โดนัท kWh) : ดันโดนัทลง */
+  .card-carbon .card-section-bottom .donut-wrapper {
+    margin-top: 28px;
+  }
 }
